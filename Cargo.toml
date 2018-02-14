@@ -24,3 +24,7 @@ members = [
   "components/segment-api-client",
   "components/sup"
 ]
+
+[patch."https://github.com/habitat-sh/core.git"]
+habitat_core = {path = "./core/components/core"}
+habitat_win_users = {path = "./core/components/win-users"}
