@@ -27,6 +27,7 @@ pub type BitbucketResult<T> = Result<T, BitbucketError>;
 #[derive(Debug)]
 pub enum BitbucketError {
     ApiClient(hab_http::Error),
+    ApiError(hyper::status::StatusCode, serde_json::Error),
     Auth(types::AuthErr),
     HttpClient(hyper::Error),
     HttpResponse(hyper::status::StatusCode),
@@ -38,6 +39,13 @@ impl fmt::Display for BitbucketError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let msg = match *self {
             BitbucketError::ApiClient(ref e) => format!("{}", e),
+            BitbucketError::ApiError(ref code, ref response) => {
+                format!(
+                    "Received a non-200 response, status={}, response={:?}",
+                    code,
+                    response
+                )
+            }
             BitbucketError::Auth(ref e) => format!("Bitbucket Authentication error, {}", e),
             BitbucketError::HttpClient(ref e) => format!("{}", e),
             BitbucketError::HttpResponse(ref e) => format!("{}", e),
@@ -52,6 +60,7 @@ impl error::Error for BitbucketError {
     fn description(&self) -> &str {
         match *self {
             BitbucketError::ApiClient(ref err) => err.description(),
+            BitbucketError::ApiError(_, _) => "Response returned a non-200 status code.",
             BitbucketError::Auth(_) => "Bitbucket authorization error.",
             BitbucketError::HttpClient(ref err) => err.description(),
             BitbucketError::HttpResponse(_) => "Non-200 HTTP response.",

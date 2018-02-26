@@ -15,7 +15,6 @@
 use std::io::Read;
 
 use hab_http::ApiClient;
-use hyper::client::{RequestBuilder, Response};
 use hyper::header::{Authorization, Basic, Bearer};
 use serde_json;
 
@@ -24,31 +23,30 @@ use error::{BitbucketError, BitbucketResult};
 use types::*;
 
 pub struct BitbucketClient {
-    pub url: String,
-    pub client_id: String,
-    pub client_secret: String,
+    pub config: BitbucketCfg,
 }
 
 impl BitbucketClient {
     pub fn new(config: BitbucketCfg) -> Self {
-        BitbucketClient {
-            url: config.url,
-            client_id: config.client_id,
-            client_secret: config.client_secret,
-        }
+        BitbucketClient { config: config }
     }
 
     // This function takes the code received from the Oauth dance and exchanges
     // it for an access token
     pub fn authenticate(&self, code: &str) -> BitbucketResult<String> {
+        // TODO JB: make the version here dynamic
+        let client = ApiClient::new(&self.config.web_url, "habitat", "0.54.0", None)
+            .map_err(BitbucketError::ApiClient)?;
         let query = format!("grant_type=authorization_code&code={}", code);
-        let mut resp = self.http_post(
+        let mut req = client.post_with_custom_url(
             "site/oauth2/access_token",
-            Some(&query),
-            None::<String>,
-            Some(self.client_id),
-            Some(self.client_secret),
-        )?;
+            |url| url.set_query(Some(&query)),
+        );
+        req = req.header(Authorization(Basic {
+            username: self.config.client_id.clone(),
+            password: Some(self.config.client_secret.clone()),
+        }));
+        let mut resp = req.send().map_err(BitbucketError::HttpClient)?;
         if resp.status.is_success() {
             let mut body = String::new();
             resp.read_to_string(&mut body)?;
@@ -65,70 +63,27 @@ impl BitbucketClient {
         }
     }
 
-    fn http_get<T>(&self, path: &str, token: Option<T>) -> BitbucketResult<Response>
-    where
-        T: ToString,
-    {
-        let client = ApiClient::new(&self.url, "habitat", "0.54.0", None)
+    // This function uses a valid access token to retrieve details about a user. All we really care
+    // about is username and email address
+    pub fn user(&self, token: &str) -> BitbucketResult<User> {
+        // TODO JB: make the version here dynamic
+        let client = ApiClient::new(&self.config.api_url, "habitat", "0.54.0", None)
             .map_err(BitbucketError::ApiClient)?;
-        let mut req = client.get(path);
-        req = self.maybe_add_token(req, token);
-        req.send().map_err(BitbucketError::HttpClient)
-    }
-
-    fn http_post<T>(
-        &self,
-        path: &str,
-        query_string: Option<&str>,
-        token: Option<T>,
-        username: Option<T>,
-        password: Option<T>,
-    ) -> BitbucketResult<Response>
-    where
-        T: ToString,
-    {
-        let client = ApiClient::new(&self.url, "habitat", "0.54.0", None)
-            .map_err(BitbucketError::ApiClient)?;
-        let mut req = client.post_with_custom_url(path, |url| if query_string.is_some() {
-            url.set_query(query_string)
-        });
-        req = self.maybe_add_token(req, token);
-        req = self.maybe_add_basic(req, username, password);
-        req.send().map_err(BitbucketError::HttpClient)
-    }
-
-    fn maybe_add_basic<'a, T>(
-        &'a self,
-        req: RequestBuilder<'a>,
-        username: Option<T>,
-        password: Option<T>,
-    ) -> RequestBuilder
-    where
-        T: ToString,
-    {
-        if username.is_some() {
-            req.header(Authorization(Basic {
-                username: username.unwrap().to_string(),
-                password: password.and_then(String::from),
-            }))
+        let mut req = client.get("1.0/user");
+        req = req.header(Authorization(Bearer { token: token.to_string() }));
+        let mut resp = req.send().map_err(BitbucketError::HttpClient)?;
+        if resp.status.is_success() {
+            let mut body = String::new();
+            resp.read_to_string(&mut body)?;
+            debug!("Bitbucket response body, {}", body);
+            match serde_json::from_str::<UserOk>(&body) {
+                Ok(msg) => Ok(msg.user),
+                Err(e) => {
+                    return Err(BitbucketError::ApiError(resp.status, e));
+                }
+            }
+        } else {
+            Err(BitbucketError::HttpResponse(resp.status))
         }
     }
-
-    fn maybe_add_token<'a, T>(&'a self, req: RequestBuilder<'a>, token: Option<T>) -> RequestBuilder
-    where
-        T: ToString,
-    {
-        match token {
-            Some(token) => req.header(Authorization(Bearer { token: token.to_string() })),
-            None => req,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn can_ping_bitbucket() {}
 }
