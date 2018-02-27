@@ -8,9 +8,9 @@ workspace = "../../"
 [dependencies]
 hyper = "0.10"
 log = "*"
-serde = "*"
-serde_derive = "*"
-serde_json = "*"
+serde = ">= 1.0.0"
+serde_derive = ">= 1.0.0"
+serde_json = ">= 1.0.0"
 
 [dependencies.habitat_http_client]
 path = "../http-client"
