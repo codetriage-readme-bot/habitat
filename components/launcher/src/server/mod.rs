@@ -296,7 +296,7 @@ impl Server {
     }
 
     /// Windows doesn't have the same orphan-reaping behavior as Linux;
-    /// returnig `None` means that there's nothing special that needs
+    /// returning `None` means that there's nothing special that needs
     /// to be done.
     #[cfg(windows)]
     fn reap_zombie_orphans(&mut self) -> Option<Result<TickState>> {
