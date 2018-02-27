@@ -1,0 +1,6 @@
+[package]
+name = "http-client-common"
+version = "0.0.0"
+authors = ["Josh Black <raskchanky@gmail.com>"]
+
+[dependencies]
